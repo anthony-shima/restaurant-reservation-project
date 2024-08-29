@@ -1,78 +1,124 @@
-
 import React, { useEffect, useState } from "react";
-import ReservationTable from "./reservationTable/reservationTable";
-import { listReservations, listTables } from "../utils/api";
+import { listReservations, listTables, finishTable, cancelReservation } from "../utils/api";
 import ErrorAlert from "../layout/ErrorAlert";
-import { useHistory } from "react-router-dom";
-import { previous, next } from "../utils/date-time";
-import TableList from "./tableList/TableList";
-
+import { next, previous, today } from "../utils/date-time";
+import Reservation from "../layout/Reservation/Reservation"
+import Table from "../layout/Table/Table"
+import useQuery from "../utils/useQuery"
 /**
  * Defines the dashboard page.
  * @param date
  *  the date for which the user wants to view reservations.
  * @returns {JSX.Element}
  */
-function Dashboard({ date }) {
+function Dashboard() {
+  const query = useQuery();
   const [reservations, setReservations] = useState([]);
-  const [tables, setTables] = useState([]);
+  const [reservationDate, setReservationDate] = useState(query.get("date")||today());
   const [reservationsError, setReservationsError] = useState(null);
-  const history = useHistory();
+  const [tables, setTables] = useState([]);
 
-  useEffect(loadDashboard, [date]);
+  useEffect(loadDashboard, [reservationDate]);
+
+
 
   function loadDashboard() {
+    console.log("loadDashboard")
     const abortController = new AbortController();
     setReservationsError(null);
-    listReservations({ date }, abortController.signal)
+    listReservations({ date: reservationDate }, abortController.signal)
       .then(setReservations)
-      .then(listTables)
-      .then(setTables)
       .catch(setReservationsError);
+
+    listTables(abortController.signal).then(setTables);
     return () => abortController.abort();
   }
 
-  function handleToday() {
-    history.push(`/dashboard`);
+  function onFinish(table_id, reservation_id) {
+    finishTable(table_id, reservation_id)
+      .then(loadDashboard)
   }
 
-  function handlePrev() {
-    const newDate = previous(date);
-    history.push(`/dashboard?date=${newDate}`);
+  function onCancel(reservation_id) {
+    const abortController = new AbortController();
+    cancelReservation(reservation_id, abortController.signal)
+      .then(loadDashboard)
+    return () => abortController.abort();
   }
 
-  function handleNext() {
-    history.push(`/dashboard?date=${next(date)}`);
-  }
-
+console.log("tables", tables)
   return (
-    <main>
-      <h1 className="d-md-flex justify-content-center">Dashboard</h1>
-      <div className="d-md-flex mb-3 justify-content-center">
-        <h4 className="mb-0">Reservations for {date}</h4>
-      </div>
-      <div className="pb-2 d-flex justify-content-center">
-        <button className="btn btn-primary mr-1" onClick={handleToday}>
-          today
-        </button>
-        <button className="btn btn-primary mr-1" onClick={handlePrev}>
-          previous
-        </button>
-        <button className="btn btn-primary" onClick={handleNext}>
-          next
-        </button>
-      </div>
+    <main className="container mt-3">
+      <h1 className="mb-4 text-center">Dashboard</h1>
       <ErrorAlert error={reservationsError} />
-      <ReservationTable
-        reservations={reservations}
-        setReservations={setReservations}
-        setError={setReservationsError}
-      />
-      <div>
-        <TableList tables={tables} loadDashboard={loadDashboard} />
+      <div className="row mb-3">
+          <div className="col">
+            <h4>Reservations for {reservationDate}</h4>
+            <div className="btn-group" role="group">
+              <button type="button" onClick={() => setReservationDate(previous(reservationDate))} className="btn btn-outline-primary">Yesterday</button>
+              <button type="button" onClick={() => setReservationDate(today(reservationDate))} className="btn btn-outline-primary mx-2">Today</button>
+              <button type="button" onClick={() => setReservationDate(next(reservationDate))} className="btn btn-outline-primary">Tomorrow</button>
+            </div>
+          </div>
+      </div>
+
+      <div className="row">
+        <div className="col-lg-12 mb-3">
+          <h2>Patrons</h2>
+          {reservations.length > 0 ? (
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Patron</th>
+                    <th>Phone #</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Size</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.map((reservation) => (
+                    <Reservation onCancel={onCancel} reservation={reservation} key={reservation.reservation_id} />
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            ) : (
+              <p>No reservations for {reservationDate}</p>
+            )}
+          </div>
+        </div>
+
+      <div className="col-lg-12 mb-3">
+        <h2>Tables</h2>
+        <div>
+          {tables.length > 0 ?
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Table</th>
+                    <th>Capacity</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tables.map((table) => (
+                    <Table onFinish={onFinish} table={table} key={table.table_id} />
+                  ))}
+                </tbody>
+              </table>
+            </div> :
+            <p> No tables in the restaurant</p>}
+        </div>
       </div>
     </main>
   );
 }
+
 
 export default Dashboard;
